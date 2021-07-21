@@ -23,33 +23,28 @@ type VM struct {
 	masks []*regexp.Regexp
 }
 
-type FileEntry struct {
+type fileEntry struct {
 	Name, RelPath string
 	Flags         EntryFlag
 	Attr          EntryAttrib
 	Size          int64
 }
-
-type Dirs struct {
+type dirEntry struct {
 	Name  string
 	Attr  EntryAttrib
-	Files []*FileEntry
-	Dirs  []*Dirs
+	Files []*fileEntry
+	Dirs  []*dirEntry
 }
 
-func (d *Dirs) AddDir(e *Dirs) {
-	d.Dirs = append(d.Dirs, e)
-}
-func (d *Dirs) AddFile(e *FileEntry) {
-	d.Files = append(d.Files, e)
-}
+func (d *dirEntry) addDir(e *dirEntry)   { d.Dirs = append(d.Dirs, e) }
+func (d *dirEntry) addFile(e *fileEntry) { d.Files = append(d.Files, e) }
 
-func (d *Dirs) NumEntries() (int64, int) {
+func (d *dirEntry) numEntries() (int64, int) {
 	fullSize := int64(0)
 	entries := 0
 
 	for _, v := range d.Dirs {
-		s, e := v.NumEntries()
+		s, e := v.numEntries()
 		fullSize += s
 		entries += e
 	}
@@ -76,7 +71,7 @@ func getFileAttr(path string) EntryAttrib {
 	// return EntryAttrib(attr) & EntryAttribMask
 }
 
-func (vm *VM) searchFiles(root, path string, list *Dirs) int {
+func (vm *VM) searchFiles(root, path string, list *dirEntry) int {
 	fileCount := 0
 	fullPath := root
 	result := 0
@@ -98,12 +93,12 @@ func (vm *VM) searchFiles(root, path string, list *Dirs) int {
 		// EntryAttrib(info.Mode() & fs.FileMode(EntryAttribMask))
 		if entry.IsDir() {
 			// subPath := filepath.Join(path, entry.Name())
-			de := &Dirs{
+			de := &dirEntry{
 				Name: name,
 				Attr: attr,
 			}
 			if n := vm.searchFiles(root, subPath, de); n != 0 {
-				list.AddDir(de)
+				list.addDir(de)
 				result += n
 			}
 		} else {
@@ -128,12 +123,12 @@ func (vm *VM) searchFiles(root, path string, list *Dirs) int {
 			if !ok {
 				continue
 			}
-			fe := &FileEntry{
+			fe := &fileEntry{
 				Name: name,
 				Size: info.Size(),
 				Attr: attr,
 			}
-			list.AddFile(fe)
+			list.addFile(fe)
 			fileCount++
 			result++
 		}
@@ -157,9 +152,9 @@ type ExtendedEntryMetadata struct {
 	Path string
 }
 
-type VdfsTable []ExtendedEntryMetadata
+type vdfsTable []ExtendedEntryMetadata
 
-func (vm *VM) readFilesFromList(list *Dirs, table VdfsTable, root, path string, index uint, dataPos *size_t) bool {
+func (vm *VM) readFilesFromList(list *dirEntry, table vdfsTable, root, path string, index uint, dataPos *size_t) bool {
 	result := true
 	idx := index
 	index += uint(len(list.Dirs) + len(list.Files))
@@ -237,6 +232,19 @@ func vdfDateTime(t time.Time) time_t {
 	return time_t(fdt)
 }
 
+func comment(c string) Comment {
+	maxLen := int(unsafe.Sizeof(Comment{}))
+	if len(c) > maxLen {
+		c = c[:maxLen]
+	}
+	comment := Comment{}
+	copy(comment[:], []byte(c))
+	for i := len(c); i < len(comment); i++ {
+		comment[i] = 0x1A
+	}
+	return comment
+}
+
 func (vm *VM) Execute() {
 	basePath := vm.BaseDir
 	vm.masks = buildMasks(vm.Files)
@@ -246,22 +254,17 @@ func (vm *VM) Execute() {
 		panic(err)
 	}
 	defer f.Close()
-	comment := Comment{}
-	for i := 0; i < len(comment); i++ {
-		comment[i] = 0x1A
-	}
-	copy(comment[:], []byte(vm.Comment))
 
 	version := Version{'P', 'S', 'V', 'D', 'S', 'C', '_', 'V', '2', '.', '0', '0', '\n', '\r', '\n', '\r'}
 	// version3 := Version{'P', 'S', 'V', 'D', 'S', 'C', '_', 'V', '3', '.', '0', '0', '\n', '\r', '\n', '\r'}
 
-	dirs := &Dirs{}
-	nFiles := vm.searchFiles(basePath, "", dirs)
-	dataSize, entryCount := dirs.NumEntries()
+	rootEntry := &dirEntry{}
+	nFiles := vm.searchFiles(basePath, "", rootEntry)
+	dataSize, entryCount := rootEntry.numEntries()
 
 	nowFileTime := vdfDateTime(time.Now())
 	header := Header{
-		Comment: comment,
+		Comment: comment(vm.Comment),
 		Version: version,
 		Params: Params{
 			EntryCount:  uint32(entryCount),
@@ -273,10 +276,10 @@ func (vm *VM) Execute() {
 		}}
 	binary.Write(f, binary.LittleEndian, header)
 
-	tbl := make(VdfsTable, header.Params.EntryCount)
+	tbl := make(vdfsTable, header.Params.EntryCount)
 	tableSize := header.Params.EntryCount * header.Params.EntrySize
 	dataPos := size_t(header.Params.TableOffset + tableSize)
-	vm.readFilesFromList(dirs, tbl, basePath, "", 0, &dataPos)
+	vm.readFilesFromList(rootEntry, tbl, basePath, "", 0, &dataPos)
 
 	for _, v := range tbl {
 		binary.Write(f, binary.LittleEndian, v.EntryMetadata)
@@ -295,18 +298,18 @@ func (vm *VM) Execute() {
 		if err != nil {
 			panic(err)
 		}
-		defer nf.Close()
 		_, err = f.Seek(int64(v.Offset), io.SeekStart)
 		if err != nil {
+			nf.Close()
 			panic(err)
 		}
 		_, err = io.Copy(f, nf)
 		if err != nil {
+			nf.Close()
 			panic(err)
 		}
 		nf.Close()
 	}
-
 }
 
 func buildMasks(files []string) []*regexp.Regexp {
