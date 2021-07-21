@@ -1,5 +1,13 @@
 package vdf
 
+// v2 types
+type size_t uint32
+type time_t uint32
+
+// v3 types
+// type size_t uint64
+// type time_t uint64
+
 type EntryName [0x3F + 1]byte
 
 // func (c EntryName) String() string {
@@ -14,8 +22,8 @@ type EntryName [0x3F + 1]byte
 
 type EntryMetadata struct {
 	Name    EntryName
-	Offset  uint32
-	Size    uint32
+	Offset  size_t
+	Size    size_t
 	Flags   EntryFlag
 	Attribs EntryAttrib
 }
@@ -49,8 +57,8 @@ type Version [0x0F + 1]byte
 type Params struct {
 	EntryCount  uint32
 	FileCount   uint32
-	TimeStamp   uint32
-	DataSize    uint32
+	TimeStamp   time_t
+	DataSize    size_t
 	TableOffset uint32
 	EntrySize   uint32
 }

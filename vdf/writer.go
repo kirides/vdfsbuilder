@@ -3,7 +3,6 @@ package vdf
 import (
 	"encoding/binary"
 	"io"
-	"math"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -160,7 +159,7 @@ type ExtendedEntryMetadata struct {
 
 type VdfsTable []ExtendedEntryMetadata
 
-func (vm *VM) readFilesFromList(list *Dirs, table VdfsTable, root, path string, index uint, dataPos *uint) bool {
+func (vm *VM) readFilesFromList(list *Dirs, table VdfsTable, root, path string, index uint, dataPos *size_t) bool {
 	result := true
 	idx := index
 	index += uint(len(list.Dirs) + len(list.Files))
@@ -170,7 +169,7 @@ func (vm *VM) readFilesFromList(list *Dirs, table VdfsTable, root, path string, 
 			Path: "",
 			EntryMetadata: EntryMetadata{
 				Name:    entryName(v.Name),
-				Offset:  uint32(index),
+				Offset:  size_t(index),
 				Size:    0,
 				Flags:   EntryFlagDirectory,
 				Attribs: v.Attr,
@@ -192,8 +191,8 @@ func (vm *VM) readFilesFromList(list *Dirs, table VdfsTable, root, path string, 
 			Path: filepath.Join(path, v.Name),
 			EntryMetadata: EntryMetadata{
 				Name:    entryName(v.Name),
-				Offset:  uint32(*dataPos),
-				Size:    uint32(v.Size),
+				Offset:  size_t(*dataPos),
+				Size:    size_t(v.Size),
 				Flags:   0,
 				Attribs: v.Attr,
 			}}
@@ -201,30 +200,41 @@ func (vm *VM) readFilesFromList(list *Dirs, table VdfsTable, root, path string, 
 			e.EntryMetadata.Flags |= EntryFlagLastEntry
 		}
 		table[idx] = e
-		*dataPos += uint(e.Size)
+		*dataPos += e.Size
 		idx++
 	}
 
 	return result
 }
 
-func fatDateTimeNow() uint32 {
-	now := time.Now().UTC()
+func vdfDateTime(t time.Time) time_t {
+	if unsafe.Sizeof(time_t(0)) == 8 {
+		return time_t(t.Unix())
+	}
 
-	var fdt uint32
-	fdt |= uint32(now.Year()-1980) & 0b_0111_1111
-	fdt <<= 4
-	fdt |= uint32(now.Month()) & 0b_1111
-	fdt <<= 5
-	fdt |= uint32(now.Day()) & 0b_0001_1111
-	fdt <<= 5
-	fdt |= uint32(now.Hour()) & 0b_0001_1111
-	fdt <<= 6
-	fdt |= uint32(now.Minute()) & 0b_0011_1111
-	fdt <<= 5
-	fdt |= uint32(math.Floor(float64(now.Second())/2)) & 0b_0001_1111
+	// calculate Fat DateTime
 
-	return fdt
+	/* https://stackoverflow.com/a/15763512
+
+				   24                16                 8                 0
+	+-+-+-+-+-+-+-+-+ +-+-+-+-+-+-+-+-+ +-+-+-+-+-+-+-+-+ +-+-+-+-+-+-+-+-+
+	|Y|Y|Y|Y|Y|Y|Y|M| |M|M|M|D|D|D|D|D| |h|h|h|h|h|m|m|m| |m|m|m|s|s|s|s|s|
+	+-+-+-+-+-+-+-+-+ +-+-+-+-+-+-+-+-+ +-+-+-+-+-+-+-+-+ +-+-+-+-+-+-+-+-+
+	 \___________/ \_______/ \_______/   \_______/ \___________/ \_______/
+		year        month       day         hour     minute        second
+
+	The year is stored as an offset from 1980.
+	Seconds are stored in two-second increments.
+	(So if the "second" value is 15, it actually represents 30 seconds.)
+	*/
+
+	fdt := uint32(t.Year()-1980) << 25
+	fdt |= uint32(t.Month()) << 21
+	fdt |= uint32(t.Day()) << 16
+	fdt |= uint32(t.Hour()) << 11
+	fdt |= uint32(t.Minute()) << 5
+	fdt |= uint32(t.Second()) >> 1
+	return time_t(fdt)
 }
 
 func (vm *VM) Execute() {
@@ -243,33 +253,31 @@ func (vm *VM) Execute() {
 	copy(comment[:], []byte(vm.Comment))
 
 	version := Version{'P', 'S', 'V', 'D', 'S', 'C', '_', 'V', '2', '.', '0', '0', '\n', '\r', '\n', '\r'}
+	// version3 := Version{'P', 'S', 'V', 'D', 'S', 'C', '_', 'V', '3', '.', '0', '0', '\n', '\r', '\n', '\r'}
 
 	dirs := &Dirs{}
 	nFiles := vm.searchFiles(basePath, "", dirs)
 	dataSize, entryCount := dirs.NumEntries()
-	// fmt.Printf("%d\n", dataSize)
 
-	nowFileTime := fatDateTimeNow()
+	nowFileTime := vdfDateTime(time.Now())
 	header := Header{
 		Comment: comment,
 		Version: version,
 		Params: Params{
 			EntryCount:  uint32(entryCount),
 			FileCount:   uint32(nFiles),
-			TimeStamp:   uint32(nowFileTime),
-			DataSize:    uint32(dataSize),
+			TimeStamp:   nowFileTime,
+			DataSize:    size_t(dataSize),
 			TableOffset: uint32(unsafe.Sizeof(Header{})),
-			EntrySize:   80,
+			EntrySize:   uint32(unsafe.Sizeof(EntryMetadata{})),
 		}}
 	binary.Write(f, binary.LittleEndian, header)
 
 	tbl := make(VdfsTable, header.Params.EntryCount)
 	tableSize := header.Params.EntryCount * header.Params.EntrySize
-	dataPos := uint(header.Params.TableOffset + tableSize)
+	dataPos := size_t(header.Params.TableOffset + tableSize)
 	vm.readFilesFromList(dirs, tbl, basePath, "", 0, &dataPos)
-	// for _, v := range tbl {
-	// 	fmt.Printf("%v\n", v)
-	// }
+
 	for _, v := range tbl {
 		binary.Write(f, binary.LittleEndian, v.EntryMetadata)
 	}
@@ -304,6 +312,7 @@ func (vm *VM) Execute() {
 func buildMasks(files []string) []*regexp.Regexp {
 	var result []*regexp.Regexp
 	for _, f := range files {
+		// TODO: support non recursive matching
 		f = strings.TrimSuffix(f, " -r")
 		expr := regexp.QuoteMeta(f)
 		// if strings.HasSuffix(f, " -r") {
