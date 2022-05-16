@@ -1,6 +1,6 @@
 package vdfsbuilder
 
-import "vdfsbuilder/vdf"
+import "github.com/kirides/vdfsbuilder/vdf"
 
 func SanitizeVM(vm *vdf.VM) {
 

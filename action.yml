@@ -1,0 +1,17 @@
+name: Gothic VDFS Builder
+author: Kirides
+description: interprets Gothic (videogame) *.vm files and packs a VDF from it
+inputs:
+  in:
+    description: "*.VM file used to package"
+    required: true
+  out:
+    description: "overwrite VDFName output-file"
+    required: false
+  baseDir:
+    description: "overwrite BaseDir for packaging"
+    required: false
+
+runs:
+  using: docker
+  image: Dockerfile

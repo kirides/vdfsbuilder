@@ -7,8 +7,9 @@ import (
 	"os"
 	"runtime"
 	"strings"
-	"vdfsbuilder"
-	"vdfsbuilder/vdf"
+
+	"github.com/kirides/vdfsbuilder"
+	"github.com/kirides/vdfsbuilder/vdf"
 )
 
 func invocation() string {
