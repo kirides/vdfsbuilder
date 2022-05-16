@@ -1,5 +1,7 @@
 FROM golang:1.18.1 AS builder
 
+WORKDIR /workspace
+
 ENV GO111MODULE=on
 
 COPY go.mod go.mod
