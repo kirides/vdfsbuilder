@@ -2,6 +2,7 @@ package vdf
 
 import (
 	"encoding/binary"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -245,13 +246,13 @@ func comment(c string) Comment {
 	return comment
 }
 
-func (vm *VM) Execute() {
+func (vm *VM) Execute() error {
 	basePath := vm.BaseDir
 	vm.masks = buildMasks(vm.Files)
 
 	f, err := os.Create(vm.VDFName)
 	if err != nil {
-		panic(err)
+		return fmt.Errorf("failed to create output. %w", err)
 	}
 	defer f.Close()
 
@@ -286,7 +287,7 @@ func (vm *VM) Execute() {
 	}
 	curPos, err := f.Seek(0, io.SeekCurrent)
 	if err != nil {
-		panic(err)
+		return fmt.Errorf("failed to seek to start. %w", err)
 	}
 	f.Truncate(curPos + dataSize)
 
@@ -294,22 +295,25 @@ func (vm *VM) Execute() {
 		if v.Flags&EntryFlagDirectory != 0 {
 			continue
 		}
-		nf, err := os.Open(filepath.Join(basePath, v.Path))
+		entryFile := filepath.Join(basePath, v.Path)
+		nf, err := os.Open(entryFile)
 		if err != nil {
-			panic(err)
+			return fmt.Errorf("failed to open %q. %w", entryFile, err)
 		}
 		_, err = f.Seek(int64(v.Offset), io.SeekStart)
 		if err != nil {
 			nf.Close()
-			panic(err)
+			return fmt.Errorf("failed to seek to %d. %w", v.Offset, err)
 		}
 		_, err = io.Copy(f, nf)
 		if err != nil {
 			nf.Close()
-			panic(err)
+			return fmt.Errorf("failed to copy entry to VDF. %w", err)
 		}
 		nf.Close()
 	}
+
+	return nil
 }
 
 func buildMasks(files []string) []*regexp.Regexp {
