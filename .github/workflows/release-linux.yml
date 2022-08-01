@@ -70,25 +70,34 @@ jobs:
             ${{ env.RELEASE_FILE }}.sha256
 
   release:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/')
     needs: build
     runs-on: ubuntu-latest
 
     steps:
+      - uses: actions/checkout@v3
+
       - name: Collect artifacts
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v3
+
+      - name: Display structure of downloaded files
+        run: ls -R
+
+      - name: Setup tag
+        run: |
+          export tagName=${GITHUB_REF/refs\/tags\//}
+          echo "Tag: ${tagName}"
+          echo "RELEASE_VERSION=${tagName}" >> $GITHUB_ENV
 
       - name: Create github release
-        uses: softprops/action-gh-release@v1
-        with:
-          name: ${{ github.ref_name }}
-          draft: false
-          prerelease: false
-          generate_release_notes: false
+        run: |
+          gh release create $RELEASE_VERSION -n "Generated release from GitHub Actions"
+          exit 0
+        env:
+          GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
 
       - name: Upload artifacts to github release
-        working-directory: ${{env.GITHUB_WORKSPACE}}
         run: |
-          gh release upload *.zip
+          gh release upload **/*.zip
         env:
           GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
