@@ -16,7 +16,8 @@ jobs:
 
     strategy:
       matrix:
-        os: [linux, windows, darwin]
+        # os: [linux, windows, darwin]
+        os: [linux]
         arch: [amd64, arm64]
         go-version: [1.18]
 
@@ -98,6 +99,6 @@ jobs:
 
       - name: Upload artifacts to github release
         run: |
-          gh release upload **/*.zip
+          gh release upload $$RELEASE_VERSION **/*.zip
         env:
           GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
