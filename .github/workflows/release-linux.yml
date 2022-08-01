@@ -75,31 +75,20 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Setup tag
-        run: |
-          export tagName=${GITHUB_REF/refs\/tags\//}
-          echo "Tag: ${tagName}"
-          echo "RELEASE_VERSION=${tagName}" >> $GITHUB_ENV
-
       - name: Collect artifacts
         uses: actions/download-artifact@v2
 
       - name: Create github release
-        run: |
-          gh release create $RELEASE_VERSION -n "Generated release from GitHub Actions"
-          exit 0
-        env:
-          GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
+        uses: softprops/action-gh-release@v1
+        with:
+          name: ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+          generate_release_notes: false
 
       - name: Upload artifacts to github release
         working-directory: ${{env.GITHUB_WORKSPACE}}
         run: |
-          gh release upload \
-              ./vdfsbuilder.linux-amd64 \
-              ./vdfsbuilder.linux-arm64 \
-              ./vdfsbuilder.windows-amd64 \
-              ./vdfsbuilder.windows-arm64 \
-              ./vdfsbuilder.darwin-amd64 \
-              ./vdfsbuilder-darwin-arm64
+          gh release upload *.zip
         env:
           GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
