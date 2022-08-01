@@ -64,7 +64,7 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v3
         with:
-          name: ${{ env.RELEASE_FILE }}.zip
+          name: ${{ env.RELEASE_FILE }}
           path: |
             ${{ env.RELEASE_FILE }}
             ${{ env.RELEASE_FILE }}.sha256
@@ -99,22 +99,22 @@ jobs:
       - name: Upload artifacts to github release
         run: |
           gh release upload $RELEASE_VERSION \
-            vdfsbuilder.linux-amd64.zip/vdfsbuilder.linux-amd64 \
-            vdfsbuilder.linux-amd64.zip/vdfsbuilder.linux-amd64.sha256
+            vdfsbuilder.linux-amd64/vdfsbuilder.linux-amd64 \
+            vdfsbuilder.linux-amd64/vdfsbuilder.linux-amd64.sha256
           gh release upload $RELEASE_VERSION \
-            vdfsbuilder.linux-arm64.zip/vdfsbuilder.linux-arm64 \
-            vdfsbuilder.linux-arm64.zip/vdfsbuilder.linux-arm64.sha256
+            vdfsbuilder.linux-arm64/vdfsbuilder.linux-arm64 \
+            vdfsbuilder.linux-arm64/vdfsbuilder.linux-arm64.sha256
           gh release upload $RELEASE_VERSION \
-            vdfsbuilder.windows-amd64.zip/vdfsbuilder.windows-amd64 \
-            vdfsbuilder.windows-amd64.zip/vdfsbuilder.windows-amd64.sha256
+            vdfsbuilder.windows-amd64.exe/vdfsbuilder.windows-amd64.exe \
+            vdfsbuilder.windows-amd64.exe/vdfsbuilder.windows-amd64.exe.sha256
           gh release upload $RELEASE_VERSION \
-            vdfsbuilder.windows-arm64.zip/vdfsbuilder.windows-arm64 \
-            vdfsbuilder.windows-arm64.zip/vdfsbuilder.windows-arm64.sha256
+            vdfsbuilder.windows-arm64.exe/vdfsbuilder.windows-arm64.exe \
+            vdfsbuilder.windows-arm64.exe/vdfsbuilder.windows-arm64.exe.sha256
           gh release upload $RELEASE_VERSION \
-            vdfsbuilder.darwin-amd64.zip/vdfsbuilder.darwin-amd64 \
-            vdfsbuilder.darwin-amd64.zip/vdfsbuilder.darwin-amd64.sha256
+            vdfsbuilder.darwin-amd64/vdfsbuilder.darwin-amd64 \
+            vdfsbuilder.darwin-amd64/vdfsbuilder.darwin-amd64.sha256
           gh release upload $RELEASE_VERSION \
-            vdfsbuilder.darwin-arm64.zip/vdfsbuilder.darwin-arm64 \
-            vdfsbuilder.darwin-arm64.zip/vdfsbuilder.darwin-arm64.sha256
+            vdfsbuilder.darwin-arm64/vdfsbuilder.darwin-arm64 \
+            vdfsbuilder.darwin-arm64/vdfsbuilder.darwin-arm64.sha256
         env:
           GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
