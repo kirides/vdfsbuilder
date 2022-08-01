@@ -23,6 +23,8 @@ func main() {
 	outFile := flag.String("o", "", "override output filepath")
 	baseDir := flag.String("b", "", "base directory (substitution for \".\\\")")
 
+	log.SetOutput(os.Stdout)
+
 	flag.Usage = func() {
 		fmt.Println("example:")
 		fmt.Printf("%s [options] *.vm\n", invocation())
@@ -57,6 +59,10 @@ func main() {
 	if *outFile != "" {
 		vm.VDFName = *outFile
 	}
+
+	wd, _ := os.Getwd()
+	fmt.Fprintf(os.Stdout, "working directory: %q\n", wd)
+
 	if err := vm.Execute(); err != nil {
 		log.Fatalf("failed to execute %q. %v", args[0], err)
 	}
