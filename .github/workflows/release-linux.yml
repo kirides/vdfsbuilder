@@ -44,25 +44,27 @@ jobs:
     - name: Build Windows
       if: matrix.os == 'windows'
       run: |
-        export RELEASE_FILE=vdfsbuilder.$GOARCH.exe
+        export RELEASE_FILE=vdfsbuilder.$GOOS-$GOARCH.exe
         echo "RELEASE_FILE=$RELEASE_FILE" >> $GITHUB_ENV
-        go build -v -o $RELEASE_FILE -ldflags "-s -w"
+        go build -v -o $RELEASE_FILE -ldflags "-s -w" ./cmd/vdfsbuilder
+
     - name: Build linux
       if: matrix.os != 'windows'
       run: |
-        export RELEASE_FILE=vdfsbuilder.$GOOS.$GOARCH
+        export RELEASE_FILE=vdfsbuilder.$GOOS-$GOARCH
         echo "RELEASE_FILE=$RELEASE_FILE" >> $GITHUB_ENV
-        go build -v -o $RELEASE_FILE -ldflags '-extldflags "-static" -s -w'
+        go build -v -o $RELEASE_FILE -ldflags '-extldflags "-static" -s -w' ./cmd/vdfsbuilder
 
     - name: Calculate distribution hash
       working-directory: ${{env.GITHUB_WORKSPACE}}
       run: |
         sha256sum "$RELEASE_FILE" > "$RELEASE_FILE.sha256"
         cat "$RELEASE_FILE.sha256"
+
     - name: Upload artifacts
       uses: actions/upload-artifact@v3
       with:
-        name: ${{ matrix.os }}-${{matrix.arch}}
+        name: ${{ env.RELEASE_FILE }}.zip
         path: |
           ${{ env.RELEASE_FILE }}
           ${{ env.RELEASE_FILE }}.sha256
