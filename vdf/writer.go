@@ -291,11 +291,15 @@ func (vm *VM) Execute() error {
 	}
 	f.Truncate(curPos + dataSize)
 
+	fmt.Fprintf(os.Stdout, "adding files to %s ...\n", vm.VDFName)
+
 	for _, v := range tbl {
 		if v.Flags&EntryFlagDirectory != 0 {
 			continue
 		}
 		entryFile := filepath.Join(basePath, v.Path)
+		fmt.Fprintf(os.Stdout, "  %s\n", entryFile)
+
 		nf, err := os.Open(entryFile)
 		if err != nil {
 			return fmt.Errorf("failed to open %q. %w", entryFile, err)
