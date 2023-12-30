@@ -98,6 +98,6 @@ jobs:
 
       - name: Upload artifacts to github release
         run: |
-          gh release upload **/*.zip
+          gh release upload *.zip
         env:
           GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
