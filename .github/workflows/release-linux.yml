@@ -91,13 +91,7 @@ jobs:
 
       - name: Create github release
         run: |
-          gh release create $RELEASE_VERSION -n "Generated release from GitHub Actions"
+          gh release create $RELEASE_VERSION --generate-notes *.zip
           exit 0
-        env:
-          GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
-
-      - name: Upload artifacts to github release
-        run: |
-          gh release upload *.zip
         env:
           GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
