@@ -85,6 +85,9 @@ func (vm *VM) searchFiles(root, path string, list *dirEntry) int {
 	}
 	for _, entry := range entries {
 		name := entry.Name()
+		if name == "." || name == ".." {
+			continue
+		}
 		info, err := entry.Info()
 		if err != nil {
 			panic(err)
