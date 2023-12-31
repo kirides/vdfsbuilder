@@ -72,6 +72,17 @@ func getFileAttr(path string) EntryAttrib {
 	// return EntryAttrib(attr) & EntryAttribMask
 }
 
+func (vm *VM) matchesMasks(fullPath string) bool {
+	ok := false
+	for i := 0; i < len(vm.masks); i++ {
+		if vm.masks[i].MatchString(fullPath) {
+			ok = true
+			break
+		}
+	}
+	return ok
+}
+
 func (vm *VM) searchFiles(root, path string, list *dirEntry) int {
 	fileCount := 0
 	fullPath := root
@@ -85,16 +96,14 @@ func (vm *VM) searchFiles(root, path string, list *dirEntry) int {
 	}
 	for _, entry := range entries {
 		name := entry.Name()
-		if name == "." || name == ".." {
-			continue
-		}
 		info, err := entry.Info()
 		if err != nil {
 			panic(err)
 		}
 		subPath := filepath.Join(path, entry.Name())
-		attr := getFileAttr(filepath.Join(root, subPath))
-		// EntryAttrib(info.Mode() & fs.FileMode(EntryAttribMask))
+		fullPath := filepath.Join(root, subPath)
+
+		attr := getFileAttr(fullPath)
 		if entry.IsDir() {
 			// subPath := filepath.Join(path, entry.Name())
 			de := &dirEntry{
@@ -117,14 +126,7 @@ func (vm *VM) searchFiles(root, path string, list *dirEntry) int {
 				// Only add each name file once (??)
 				break
 			}
-			ok := false
-			for i := 0; i < len(vm.masks); i++ {
-				if vm.masks[i].MatchString(subPath) {
-					ok = true
-					break
-				}
-			}
-			if !ok {
+			if !vm.matchesMasks(subPath) {
 				continue
 			}
 			fe := &fileEntry{
@@ -158,17 +160,18 @@ type ExtendedEntryMetadata struct {
 
 type vdfsTable []ExtendedEntryMetadata
 
-func (vm *VM) readFilesFromList(list *dirEntry, table vdfsTable, root, path string, index uint, dataPos *size_t) bool {
+func (vm *VM) readFilesFromList(list *dirEntry, f *os.File, table vdfsTable, root, path string, index *uint, dataPos *size_t) bool {
 	result := true
-	idx := index
-	index += uint(len(list.Dirs) + len(list.Files))
+	idx := *index
+	*index += uint(len(list.Dirs) + len(list.Files))
 
 	for i, v := range list.Dirs {
+		subPath := filepath.Join(path, v.Name)
 		e := ExtendedEntryMetadata{
 			Path: "",
 			EntryMetadata: EntryMetadata{
 				Name:    entryName(v.Name),
-				Offset:  size_t(index),
+				Offset:  size_t(*index),
 				Size:    0,
 				Flags:   EntryFlagDirectory,
 				Attribs: v.Attr,
@@ -177,8 +180,7 @@ func (vm *VM) readFilesFromList(list *dirEntry, table vdfsTable, root, path stri
 			e.Flags |= EntryFlagLastEntry
 		}
 		table[idx] = e
-		subPath := filepath.Join(path, v.Name)
-		if !vm.readFilesFromList(v, table, root, subPath, index, dataPos) {
+		if !vm.readFilesFromList(v, f, table, root, subPath, index, dataPos) {
 			result = false
 			break
 		}
@@ -198,12 +200,27 @@ func (vm *VM) readFilesFromList(list *dirEntry, table vdfsTable, root, path stri
 		if i == len(list.Files)-1 {
 			e.EntryMetadata.Flags |= EntryFlagLastEntry
 		}
+		if !vm.appendDataFromDisk(f, root, path, v.Name) {
+			fmt.Fprintf(os.Stdout, "could not process %q\n", v.Name)
+			return false
+		}
 		table[idx] = e
 		*dataPos += e.Size
 		idx++
 	}
 
 	return result
+}
+
+func (vm *VM) appendDataFromDisk(f *os.File, root, path, name string) bool {
+	fullPath := filepath.Join(root, path, name)
+	src, err := os.Open(fullPath)
+	if err != nil {
+		return false
+	}
+	defer src.Close()
+	io.Copy(f, src)
+	return true
 }
 
 func vdfDateTime(t time.Time) time_t {
@@ -283,43 +300,30 @@ func (vm *VM) Execute() error {
 	tbl := make(vdfsTable, header.Params.EntryCount)
 	tableSize := header.Params.EntryCount * header.Params.EntrySize
 	dataPos := size_t(header.Params.TableOffset + tableSize)
-	vm.readFilesFromList(rootEntry, tbl, basePath, "", 0, &dataPos)
 
+	if err := f.Truncate(int64(dataPos)); err != nil {
+		return fmt.Errorf("could not truncate to fit data. %w", err)
+	}
+
+	if _, err := f.Seek(int64(dataPos), io.SeekStart); err != nil {
+		return fmt.Errorf("failed to seek to data offset. %w", err)
+	}
+
+	startIndex := uint(0)
+	vm.readFilesFromList(rootEntry, f, tbl, basePath, "", &startIndex, &dataPos)
+
+	fmt.Fprintf(os.Stdout, "Resulting Table:\n")
 	for _, v := range tbl {
-		binary.Write(f, binary.LittleEndian, v.EntryMetadata)
+		fmt.Fprintf(os.Stdout, "%#v\n", v)
 	}
-	curPos, err := f.Seek(0, io.SeekCurrent)
-	if err != nil {
-		return fmt.Errorf("failed to seek to start. %w", err)
+	if _, err := f.Seek(int64(header.Params.TableOffset), io.SeekStart); err != nil {
+		return fmt.Errorf("failed to seek to table offset. %w", err)
 	}
-	f.Truncate(curPos + dataSize)
-
-	fmt.Fprintf(os.Stdout, "adding files to %s ...\n", vm.VDFName)
-
 	for _, v := range tbl {
-		if v.Flags&EntryFlagDirectory != 0 {
-			continue
+		if err := binary.Write(f, binary.LittleEndian, v.EntryMetadata); err != nil {
+			return fmt.Errorf("failed to write table entry. %q: %w", v.Name, err)
 		}
-		entryFile := filepath.Join(basePath, v.Path)
-		fmt.Fprintf(os.Stdout, "  %s\n", entryFile)
-
-		nf, err := os.Open(entryFile)
-		if err != nil {
-			return fmt.Errorf("failed to open %q. %w", entryFile, err)
-		}
-		_, err = f.Seek(int64(v.Offset), io.SeekStart)
-		if err != nil {
-			nf.Close()
-			return fmt.Errorf("failed to seek to %d. %w", v.Offset, err)
-		}
-		_, err = io.Copy(f, nf)
-		if err != nil {
-			nf.Close()
-			return fmt.Errorf("failed to copy entry to VDF. %w", err)
-		}
-		nf.Close()
 	}
-
 	return nil
 }
 
