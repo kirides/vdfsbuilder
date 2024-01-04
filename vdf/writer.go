@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"hash"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -61,8 +62,12 @@ func (d *dirEntry) numEntries() (int64, int) {
 	return fullSize, entries
 }
 
-func getFileAttr(path string) EntryAttrib {
-	return 0
+func getFileAttr(entry fs.DirEntry) EntryAttrib {
+	if entry.IsDir() {
+		return 0 // same as GothicVDFS
+	}
+	const FILEATTRIB_ARCHIVE = 0x20
+	return FILEATTRIB_ARCHIVE
 
 	// p, err := syscall.UTF16PtrFromString(path)
 	// if err != nil {
@@ -105,9 +110,8 @@ func (vm *VM) searchFiles(root, path string, list *dirEntry) int {
 			panic(err)
 		}
 		subPath := filepath.Join(path, entry.Name())
-		fullPath := filepath.Join(root, subPath)
 
-		attr := getFileAttr(fullPath)
+		attr := getFileAttr(entry)
 		if entry.IsDir() {
 			// subPath := filepath.Join(path, entry.Name())
 			de := &dirEntry{
