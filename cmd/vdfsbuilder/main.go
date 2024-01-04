@@ -55,7 +55,6 @@ func main() {
 
 	vdfsbuilder.SanitizeVM(vm)
 
-	// fmt.Printf("%#v\n", vm)
 	if *outFile != "" {
 		vm.VDFName = *outFile
 	}

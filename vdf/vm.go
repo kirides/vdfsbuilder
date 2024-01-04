@@ -42,7 +42,9 @@ func ParseVM(path string) (*VM, error) {
 	}
 	defer f.Close()
 	s := bufio.NewScanner(f)
-	vm := &VM{}
+	vm := &VM{
+		fileHashToDataOffset: make(map[string]int64),
+	}
 	state := parseInitial
 	for s.Scan() {
 		if bytes.HasPrefix(s.Bytes(), []byte(";")) {

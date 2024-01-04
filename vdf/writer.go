@@ -1,8 +1,11 @@
 package vdf
 
 import (
+	"crypto/sha256"
 	"encoding/binary"
+	"encoding/hex"
 	"fmt"
+	"hash"
 	"io"
 	"os"
 	"path/filepath"
@@ -21,7 +24,8 @@ type VM struct {
 	Exclude []string
 	Include []string
 
-	masks []*regexp.Regexp
+	masks                []*regexp.Regexp
+	fileHashToDataOffset map[string]int64
 }
 
 type fileEntry struct {
@@ -200,11 +204,21 @@ func (vm *VM) readFilesFromList(list *dirEntry, f *os.File, table vdfsTable, roo
 		if i == len(list.Files)-1 {
 			e.EntryMetadata.Flags |= EntryFlagLastEntry
 		}
-		if !vm.appendDataFromDisk(f, root, path, v.Name) {
+
+		if pos, ok := vm.tryGetExistingPos(root, path, v.Name); ok {
+			e.Offset = size_t(pos)
+			table[idx] = e
+			idx++
+			continue
+		}
+
+		table[idx] = e
+		hash, ok := vm.appendDataFromDisk(f, root, path, v.Name)
+		if !ok {
 			fmt.Fprintf(os.Stdout, "could not process %q\n", v.Name)
 			return false
 		}
-		table[idx] = e
+		vm.fileHashToDataOffset[hash] = int64(*dataPos)
 		*dataPos += e.Size
 		idx++
 	}
@@ -212,15 +226,51 @@ func (vm *VM) readFilesFromList(list *dirEntry, f *os.File, table vdfsTable, roo
 	return result
 }
 
-func (vm *VM) appendDataFromDisk(f *os.File, root, path, name string) bool {
+func (vm *VM) tryGetExistingPos(root, path, name string) (int64, bool) {
 	fullPath := filepath.Join(root, path, name)
 	src, err := os.Open(fullPath)
 	if err != nil {
-		return false
+		return 0, false
 	}
 	defer src.Close()
-	io.Copy(f, src)
-	return true
+
+	hash, err := hashFile(src)
+	if err != nil {
+		return 0, false
+	}
+	if pos, ok := vm.fileHashToDataOffset[hash]; ok {
+		return pos, true
+	}
+	return 0, false
+}
+
+func getHasher() hash.Hash {
+	return sha256.New()
+}
+
+func hashFile(f *os.File) (string, error) {
+	hasher := getHasher()
+	if _, err := io.Copy(hasher, f); err != nil {
+		return "", err
+	}
+
+	return hex.EncodeToString(hasher.Sum(nil)), nil
+}
+
+func (vm *VM) appendDataFromDisk(f *os.File, root, path, name string) (string, bool) {
+	fullPath := filepath.Join(root, path, name)
+	src, err := os.Open(fullPath)
+	if err != nil {
+		return "", false
+	}
+	defer src.Close()
+
+	hasher := getHasher()
+	if _, err := io.Copy(io.MultiWriter(f, hasher), src); err != nil {
+		return "", false
+	}
+
+	return hex.EncodeToString(hasher.Sum(nil)), true
 }
 
 func vdfDateTime(t time.Time) time_t {
@@ -269,6 +319,7 @@ func comment(c string) Comment {
 func (vm *VM) Execute() error {
 	basePath := vm.BaseDir
 	vm.masks = buildMasks(vm.Files)
+	vm.fileHashToDataOffset = make(map[string]int64)
 
 	f, err := os.Create(vm.VDFName)
 	if err != nil {
@@ -312,10 +363,6 @@ func (vm *VM) Execute() error {
 	startIndex := uint(0)
 	vm.readFilesFromList(rootEntry, f, tbl, basePath, "", &startIndex, &dataPos)
 
-	fmt.Fprintf(os.Stdout, "Resulting Table:\n")
-	for _, v := range tbl {
-		fmt.Fprintf(os.Stdout, "%#v\n", v)
-	}
 	if _, err := f.Seek(int64(header.Params.TableOffset), io.SeekStart); err != nil {
 		return fmt.Errorf("failed to seek to table offset. %w", err)
 	}
