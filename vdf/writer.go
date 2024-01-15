@@ -17,9 +17,10 @@ import (
 )
 
 type VM struct {
-	Comment string
-	BaseDir string
-	VDFName string
+	Comment   string
+	BaseDir   string
+	VDFName   string
+	Timestamp time.Time
 
 	Files   []string
 	Exclude []string
@@ -278,9 +279,13 @@ func (vm *VM) appendDataFromDisk(f *os.File, root, path, name string) (string, b
 }
 
 func vdfDateTime(t time.Time) time_t {
-	if unsafe.Sizeof(time_t(0)) == 8 {
-		return time_t(t.Unix())
-	}
+	// TODO: once gothic overflows 2038
+	// probably someone will mod in int64 timestamps
+	// and require re-packing all VDFs
+
+	// if unsafe.Sizeof(time_t(0)) == 8 {
+	// 	return time_t(t.Unix())
+	// }
 
 	// calculate Fat DateTime
 
@@ -338,7 +343,7 @@ func (vm *VM) Execute() error {
 	nFiles := vm.searchFiles(basePath, "", rootEntry)
 	dataSize, entryCount := rootEntry.numEntries()
 
-	nowFileTime := vdfDateTime(time.Now())
+	nowFileTime := vdfDateTime(vm.Timestamp)
 	header := Header{
 		Comment: comment(vm.Comment),
 		Version: version,
