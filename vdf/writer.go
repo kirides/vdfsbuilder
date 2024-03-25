@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 	"unsafe"
@@ -26,7 +27,9 @@ type VM struct {
 	Exclude []string
 	Include []string
 
-	masks                []*regexp.Regexp
+	fileMasks            []*regexp.Regexp
+	excludeMasks         []*regexp.Regexp
+	includeMasks         []*regexp.Regexp
 	fileHashToDataOffset map[string]int64
 }
 
@@ -83,14 +86,31 @@ func getFileAttr(entry fs.DirEntry) EntryAttrib {
 }
 
 func (vm *VM) matchesMasks(fullPath string) bool {
-	ok := false
-	for i := 0; i < len(vm.masks); i++ {
-		if vm.masks[i].MatchString(fullPath) {
-			ok = true
-			break
+	fullPath = filepath.ToSlash(fullPath)
+	// First try to include any file that matches [FILES]
+	shouldInclude := slices.ContainsFunc(vm.fileMasks, func(rx *regexp.Regexp) bool {
+		return rx.MatchString(fullPath)
+	})
+
+	wasExcluded := false
+	if shouldInclude {
+		// then figure out if it should be [EXCLUDE]d
+		if slices.ContainsFunc(vm.excludeMasks, func(rx *regexp.Regexp) bool {
+			return rx.MatchString(fullPath)
+		}) {
+			shouldInclude = false
+			wasExcluded = true
 		}
 	}
-	return ok
+
+	if wasExcluded {
+		// And if it WAS excluded, check if we still should [INCLUDE] it
+		shouldInclude = slices.ContainsFunc(vm.includeMasks, func(rx *regexp.Regexp) bool {
+			return rx.MatchString(fullPath)
+		})
+	}
+
+	return shouldInclude
 }
 
 func (vm *VM) searchFiles(root, path string, list *dirEntry) int {
@@ -327,7 +347,9 @@ func comment(c string) Comment {
 
 func (vm *VM) Execute() error {
 	basePath := vm.BaseDir
-	vm.masks = buildMasks(vm.Files)
+	vm.fileMasks = buildMasks(vm.Files)
+	vm.excludeMasks = buildMasks(vm.Exclude)
+	vm.includeMasks = buildMasks(vm.Include)
 	vm.fileHashToDataOffset = make(map[string]int64)
 
 	f, err := os.Create(vm.VDFName)
@@ -387,25 +409,27 @@ func buildMasks(files []string) []*regexp.Regexp {
 	var result []*regexp.Regexp
 	for _, f := range files {
 		// TODO: support non recursive matching
+		recursive := strings.HasSuffix(f, " -r")
 		f = strings.TrimSuffix(f, " -r")
+
+		// clear any sole leading path delimitters
+		f = filepath.ToSlash(f)
+		f = strings.TrimLeft(f, "/")
+
 		expr := regexp.QuoteMeta(f)
 		// if strings.HasSuffix(f, " -r") {
 		// recurse
 		expr = strings.ReplaceAll(expr, `\*`, `.*`)
 		expr = strings.ReplaceAll(expr, `\?`, `.`)
 		// }
-		expr = "(?i)^" + expr + "$"
+		if recursive {
+			// match in any directory or at the relative root
+			expr = `(?i)(?:^|\/)` + expr + "$"
+		} else {
+			// match against the full relative path
+			expr = "(?i)^" + expr + "$"
+		}
 		result = append(result, regexp.MustCompile(expr))
 	}
 	return result
 }
-
-// func buildExcludes(excl []string) []*regexp.Regexp {
-// 	var result []*regexp.Regexp
-
-// 	for _, v := range excl {
-// 		_ = v
-// 	}
-
-// 	return result
-// }

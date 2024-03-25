@@ -1,7 +1,6 @@
 package main
 
 import (
-	"runtime"
 	"strings"
 
 	"github.com/kirides/vdfsbuilder"
@@ -10,13 +9,6 @@ import (
 	"github.com/sethvargo/go-githubactions"
 )
 
-func invocation() string {
-	if runtime.GOOS == "windows" {
-		return "vdfsbuilder.exe"
-	}
-	return "./vdfsbuilder"
-}
-
 func main() {
 	inFile := githubactions.GetInput("in")
 	outFile := githubactions.GetInput("out")
@@ -24,7 +16,7 @@ func main() {
 
 	vm, err := vdf.ParseVM(inFile)
 	if err != nil {
-		githubactions.Fatalf("failed to parse input. %v", inFile, err)
+		githubactions.Fatalf("failed to parse input file %q. %v", inFile, err)
 	}
 	// allow for custom base directory
 	if baseDir != "" {

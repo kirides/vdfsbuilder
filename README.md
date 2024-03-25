@@ -26,10 +26,19 @@ Comment=This is a comment for the VDF that will be generated
 BaseDir=.\
 VDFName=.\Scripts.vdf
 [FILES]
-_Work\* -r
+# Try to include everything from _WORK\*
+_Work\*
+*.md -r
 [EXCLUDE]
 DESKTOP.INI -r
+# exclude all *.md & *.txt files
+*.md
+*.txt
 [INCLUDE]
+# after excluding, allow README.md if it's in BaseDir
+README.md
+# also allow all ocurrences of "notes.txt" in every subdirectory or BaseDir
+notes.txt -r
 [ENDVDF]
 ```
 
