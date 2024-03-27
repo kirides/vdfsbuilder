@@ -49,3 +49,32 @@ Commandline call:
                    \/                       \/                   \/ custom timestamp     \/ Path to the vm file
 > vdfsbuilder.exe -b "C:\modding\gothic\" -o "Scripts v44.vdf" -ts "2033-12-31 23:56:33" Scripts.vm
 ```
+
+## Usage in Github Actions
+
+```yaml
+name: Build Vdf
+
+# on:
+# ...
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - uses: kirides/vdfsbuilder@f7438d978d2974f9c1e97fd6dd3419709795c9d2
+        with:
+          in: example.vm
+          # out: custom_name.vdf # optional
+          # baseDir: src # optional
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: dist
+          path: example.vdf # name of the vdf file
+```
