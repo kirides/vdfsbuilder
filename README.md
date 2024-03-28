@@ -52,6 +52,9 @@ Commandline call:
 
 ## Usage in Github Actions
 
+See here for a full example with versioning and publishing a release:  
+https://github.com/kirides/ninja-manareg/blob/master/.github/workflows/release-linux.yml
+
 ```yaml
 name: Build Vdf
 
