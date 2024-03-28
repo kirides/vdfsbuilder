@@ -71,6 +71,7 @@ jobs:
           in: example.vm
           # out: custom_name.vdf # optional
           # baseDir: src # optional
+          # ts: '2037-01-01 12:00:00' # optional
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v3

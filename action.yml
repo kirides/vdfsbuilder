@@ -11,7 +11,10 @@ inputs:
   baseDir:
     description: "overwrite BaseDir for packaging"
     required: false
+  ts:
+    description: 'overwrite vdf timestamp in UTC Time. Format "YYYY-MM-dd HH:mm:ss". E.g "2021-11-28 12:31:40"'
+    required: false
 
 runs:
   using: docker
-  image: 'docker://ghcr.io/kirides/vdfsbuilder:v1.0.7'
+  image: 'docker://ghcr.io/kirides/vdfsbuilder:v1.0.8'
