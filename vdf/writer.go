@@ -85,29 +85,30 @@ func getFileAttr(entry fs.DirEntry) EntryAttrib {
 	// return EntryAttrib(attr) & EntryAttribMask
 }
 
-func (vm *VM) matchesMasks(fullPath string) bool {
-	fullPath = filepath.ToSlash(fullPath)
+// mimics GothicVDFS by either matching any INCLUDE
+// or matching a FILES before possibly EXCLUDE'ing it
+func (vm *VM) matchesMasks(relativePath string) bool {
+	relativePath = filepath.ToSlash(relativePath)
+
+	// If it's explicitly included, ignore all other masks
+	if slices.ContainsFunc(vm.includeMasks, func(rx *regexp.Regexp) bool {
+		return rx.MatchString(relativePath)
+	}) {
+		return true
+	}
+
 	// First try to include any file that matches [FILES]
 	shouldInclude := slices.ContainsFunc(vm.fileMasks, func(rx *regexp.Regexp) bool {
-		return rx.MatchString(fullPath)
+		return rx.MatchString(relativePath)
 	})
 
-	wasExcluded := false
 	if shouldInclude {
 		// then figure out if it should be [EXCLUDE]d
 		if slices.ContainsFunc(vm.excludeMasks, func(rx *regexp.Regexp) bool {
-			return rx.MatchString(fullPath)
+			return rx.MatchString(relativePath)
 		}) {
 			shouldInclude = false
-			wasExcluded = true
 		}
-	}
-
-	if wasExcluded {
-		// And if it WAS excluded, check if we still should [INCLUDE] it
-		shouldInclude = slices.ContainsFunc(vm.includeMasks, func(rx *regexp.Regexp) bool {
-			return rx.MatchString(fullPath)
-		})
 	}
 
 	return shouldInclude
@@ -408,25 +409,30 @@ func (vm *VM) Execute() error {
 func buildMasks(files []string) []*regexp.Regexp {
 	var result []*regexp.Regexp
 	for _, f := range files {
-		// TODO: support non recursive matching
 		recursive := strings.HasSuffix(f, " -r")
-		f = strings.TrimSuffix(f, " -r")
+		f = strings.TrimSuffix(f, "-r")
 
-		// clear any sole leading path delimitters
+		// clean any left over spaces
+		f = strings.Trim(f, " \t")
+
 		f = filepath.ToSlash(f)
+		// clear any sole leading path delimitters
 		f = strings.TrimLeft(f, "/")
 
+		/*
+			GothicVDFS:
+			If recursing, match the name anywhere
+			else, only match wildcards within path-separators
+		*/
+
 		expr := regexp.QuoteMeta(f)
-		// if strings.HasSuffix(f, " -r") {
-		// recurse
-		expr = strings.ReplaceAll(expr, `\*`, `.*`)
-		expr = strings.ReplaceAll(expr, `\?`, `.`)
-		// }
 		if recursive {
-			// match in any directory or at the relative root
-			expr = `(?i)(?:^|\/)` + expr + "$"
+			expr = strings.ReplaceAll(expr, `\*`, `.*`)
+			expr = strings.ReplaceAll(expr, `\?`, `.`)
+			expr = `(?i)` + expr + "$"
 		} else {
-			// match against the full relative path
+			expr = strings.ReplaceAll(expr, `\*`, `[^\/\s]*`)
+			expr = strings.ReplaceAll(expr, `\?`, `[^\/\s]`)
 			expr = "(?i)^" + expr + "$"
 		}
 		result = append(result, regexp.MustCompile(expr))
