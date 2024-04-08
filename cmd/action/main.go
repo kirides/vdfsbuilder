@@ -35,6 +35,9 @@ func main() {
 		githubactions.Infof("Overwriting vm.VDFName (out): %q", outFile)
 	}
 
+	// default to current time before override
+	vm.Timestamp = time.Now()
+
 	if tsOverrideStr != "" {
 		location := time.Local
 		if true /* *tsIsUtc */ {
