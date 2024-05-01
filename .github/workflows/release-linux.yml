@@ -37,6 +37,9 @@ jobs:
       - name: try building
         run: go build -v ./...
 
+      - name: Run tests
+        run: go test -v ./...
+
       - name: Setup final build env
         run: |
           export tagName=${GITHUB_REF/refs\/tags\//}
