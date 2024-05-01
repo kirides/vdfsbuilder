@@ -2,6 +2,8 @@ package vdf
 
 import (
 	"bytes"
+	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -32,7 +34,7 @@ Demo_Original.vdf -r
 	assertEqual(t, vm.VDFName, `.\Demo.vdf`)
 
 	assertCount(t, vm.Files, 2)
-	assertEqual(t, vm.Files[0], `_Work\* -r`)
+	assertEqual(t, vm.Files[0], fixPath(`_Work\* -r`))
 	assertEqual(t, vm.Files[1], `* -r`)
 
 	assertCount(t, vm.Exclude, 4)
@@ -102,4 +104,8 @@ func assertCount[T any](t *testing.T, slice []T, count int) {
 		t.Errorf("Expected %d items, but got %d", count, len(slice))
 		t.Fail()
 	}
+}
+
+func fixPath(p string) string {
+	return strings.ReplaceAll(p, `\`, string(filepath.Separator))
 }
