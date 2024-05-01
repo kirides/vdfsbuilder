@@ -4,13 +4,16 @@ import (
 	"bufio"
 	"bytes"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 )
 
+type parserState int
+
 const (
-	parseInitial = iota
+	parseInitial parserState = iota
 	parseBegin
 	parseEnd
 	parseFiles
@@ -18,18 +21,34 @@ const (
 	parseInclude
 )
 
-func switchState(state int, buffer []byte) (bool, int) {
+type vdfSection struct {
+	Identifier []byte
+	state      parserState
+}
+
+var (
+	sectionBeginVdf = vdfSection{[]byte("[BEGINVDF]"), parseBegin}
+	sectionFiles    = vdfSection{[]byte("[FILES]"), parseFiles}
+	sectionExclude  = vdfSection{[]byte("[EXCLUDE]"), parseExclude}
+	sectionInclude  = vdfSection{[]byte("[INCLUDE]"), parseInclude}
+	sectionEndVdf   = vdfSection{[]byte("[ENDVDF]"), parseEnd}
+
+	sections = []vdfSection{
+		sectionBeginVdf,
+		sectionFiles,
+		sectionExclude,
+		sectionInclude,
+		sectionEndVdf,
+	}
+)
+
+func switchState(state parserState, buffer []byte) (bool, parserState) {
 	newState := state
-	if bytes.Equal(buffer, []byte("[BEGINVDF]")) {
-		newState = parseBegin
-	} else if bytes.Equal(buffer, []byte("[FILES]")) {
-		newState = parseFiles
-	} else if bytes.Equal(buffer, []byte("[EXCLUDE]")) {
-		newState = parseExclude
-	} else if bytes.Equal(buffer, []byte("[INCLUDE]")) {
-		newState = parseInclude
-	} else if bytes.Equal(buffer, []byte("[ENDVDF]")) {
-		newState = parseEnd
+	for _, v := range sections {
+		if len(buffer) >= len(v.Identifier) &&
+			bytes.Equal(buffer[0:len(v.Identifier)], v.Identifier) {
+			newState = v.state
+		}
 	}
 
 	return state != newState, newState
@@ -41,7 +60,12 @@ func ParseVM(path string) (*VM, error) {
 		return nil, err
 	}
 	defer f.Close()
-	s := bufio.NewScanner(f)
+
+	return parseVM(f)
+}
+
+func parseVM(r io.Reader) (*VM, error) {
+	s := bufio.NewScanner(r)
 	vm := &VM{
 		fileHashToDataOffset: make(map[string]int64),
 	}
@@ -50,10 +74,11 @@ func ParseVM(path string) (*VM, error) {
 		if bytes.HasPrefix(s.Bytes(), []byte(";")) {
 			continue
 		}
-		if len(bytes.TrimSpace(s.Bytes())) == 0 {
+		trimmedLine := bytes.TrimSpace(s.Bytes())
+		if len(trimmedLine) == 0 {
 			continue
 		}
-		if yes, new := switchState(state, s.Bytes()); yes {
+		if yes, new := switchState(state, trimmedLine); yes {
 			state = new
 			continue
 		}
@@ -62,11 +87,12 @@ func ParseVM(path string) (*VM, error) {
 			// Nothing to do
 		case parseBegin:
 			if bytes.HasPrefix(s.Bytes(), []byte("Comment=")) {
-				vm.Comment = string(bytes.TrimLeft(s.Bytes(), "Comment="))
+				vm.Comment = string(bytes.TrimPrefix(s.Bytes(), []byte("Comment=")))
+				vm.Comment = strings.ReplaceAll(vm.Comment, `%%N`, "\r\n")
 			} else if bytes.HasPrefix(s.Bytes(), []byte("BaseDir=")) {
-				vm.BaseDir = string(bytes.TrimLeft(s.Bytes(), "BaseDir="))
+				vm.BaseDir = string(bytes.TrimPrefix(s.Bytes(), []byte("BaseDir=")))
 			} else if bytes.HasPrefix(s.Bytes(), []byte("VDFName=")) {
-				vm.VDFName = string(bytes.TrimLeft(s.Bytes(), "VDFName="))
+				vm.VDFName = string(bytes.TrimPrefix(s.Bytes(), []byte("VDFName=")))
 			}
 		case parseFiles:
 			vm.Files = append(vm.Files, strings.ReplaceAll(s.Text(), `\`, string(filepath.Separator)))
