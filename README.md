@@ -69,7 +69,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - uses: kirides/vdfsbuilder@b907f2f72c60c5e8b0a9292f9b8f0f1e8909b29d
+      - uses: kirides/vdfsbuilder@bf80e39372967d9b473f3e1e6520e725e602f73e
         with:
           in: example.vm
           # out: custom_name.vdf # optional
