@@ -334,7 +334,7 @@ func vdfDateTime(t time.Time) time_t {
 }
 
 func comment(c string) Comment {
-	maxLen := int(unsafe.Sizeof(Comment{}))
+	maxLen := int(unsafe.Sizeof(Comment{}))-1 // Room for terminating null-character
 	if len(c) > maxLen {
 		c = c[:maxLen]
 	}
